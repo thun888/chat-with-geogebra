@@ -3,6 +3,8 @@ import { createAnthropic } from "@ai-sdk/anthropic"
 import { createDeepSeek } from "@ai-sdk/deepseek"
 import { streamText } from "ai"
 import { logger } from "@/lib/logger"
+import type { ConfigSettings } from "@/lib/store"
+import { GeoGebraValidator } from "@/utils/geogebra-validator"
 
 // 在函数开头添加调试日志
 export async function POST(req: Request) {
@@ -19,23 +21,55 @@ export async function POST(req: Request) {
     const modelType = configSettings?.modelType || "gpt-4o"
     const systemPrompt =
       configSettings?.systemPrompt ||
-      "你是一个专注于数学和GeoGebra的助手。帮助用户理解数学概念并使用GeoGebra进行可视化。"
+      "你是一个专注于数学和GeoGebra的助手。帮助用户理解数学概念并使用GeoGebra进行可视化。请确保只使用有效的GeoGebra命令。"
 
-    // 获取对应模型的API密钥
-    let apiKey = ""
-    if (modelType.startsWith("claude")) {
-      apiKey = configSettings?.apiKeys?.anthropic || process.env.ANTHROPIC_API_KEY || ""
-      logger.api("使用Anthropic API密钥", { keyLength: apiKey?.length || 0 })
-    } else if (modelType.startsWith("deepseek")) {
-      apiKey = configSettings?.apiKeys?.deepseek || process.env.DEEPSEEK_API_KEY || ""
-      logger.api("使用DeepSeek API密钥", { keyLength: apiKey?.length || 0 })
+    // 检查是否是自定义模型
+    const customModel = configSettings?.customModels?.find(
+      (model: { name: string }) => model.name === modelType
+    )
+
+    // 获取对应模型的API配置
+    let apiConfig
+    if (customModel) {
+      // 使用自定义模型的配置
+      apiConfig = {
+        domain: customModel.apiConfig?.domain || "https://api.openai.com",
+        path: customModel.apiConfig?.path || "/v1/chat/completions",
+        key: customModel.apiConfig.key || ""
+      }
+      logger.api("使用自定义模型配置", {
+        model: customModel.name,
+        provider: customModel.provider,
+        domain: apiConfig.domain,
+      })
     } else {
-      // OpenAI 和其他模型
-      apiKey = configSettings?.apiKeys?.openai || process.env.OPENAI_API_KEY || ""
-      logger.api("使用OpenAI API密钥", { keyLength: apiKey?.length || 0 })
+      // 内置提供商的预设配置
+      const builtInConfigs = {
+        "gpt-4o": {
+          domain: "https://api.openai.com",
+          path: "/v1/chat/completions",
+          key: process.env.OPENAI_API_KEY || ""
+        },
+        "claude-3-opus": {
+          domain: "https://api.anthropic.com",
+          path: "/v1/messages",
+          key: process.env.ANTHROPIC_API_KEY || ""
+        },
+        "deepseek-chat": {
+          domain: "https://api.deepseek.com",
+          path: "/v1/chat/completions",
+          key: process.env.DEEPSEEK_API_KEY || ""
+        }
+      }
+
+      apiConfig = builtInConfigs[modelType as keyof typeof builtInConfigs] || builtInConfigs["gpt-4o"]
+      logger.api("使用内置模型配置", {
+        model: modelType,
+        domain: apiConfig.domain,
+      })
     }
 
-    if (!apiKey) {
+    if (!apiConfig.key) {
       logger.error("错误 - 缺少API密钥")
       return new Response(JSON.stringify({ error: "需要 API 密钥，请在设置中配置对应模型的 API 密钥" }), {
         status: 400,
@@ -47,19 +81,46 @@ export async function POST(req: Request) {
     let model, the_model
 
     try {
-      if (modelType.startsWith("claude")) {
+      if (customModel) {
+        // 使用自定义模型配置
+        if (customModel.provider === "anthropic") {
+          the_model = createAnthropic({
+            apiKey: apiConfig.key,
+            baseURL: apiConfig.domain,
+          })
+        } else if (customModel.provider === "deepseek") {
+          the_model = createDeepSeek({
+            apiKey: apiConfig.key,
+            baseURL: apiConfig.domain,
+          })
+        } else {
+          the_model = createOpenAI({
+            apiKey: apiConfig.key,
+            baseURL: apiConfig.domain,
+          })
+        }
+      } else if (modelType.startsWith("claude")) {
         // For Claude models
         logger.api("初始化Claude模型", { model: modelType })
-        the_model = createAnthropic({apiKey})
+        the_model = createAnthropic({
+          apiKey: apiConfig.key,
+          baseURL: apiConfig.domain,
+        })
       } else if (modelType.startsWith("deepseek")) {
         // For DeepSeek models
         const deepseekModel = modelType === "deepseek-chat" ? "deepseek-chat" : "deepseek-coder"
         logger.api("初始化DeepSeek模型", { model: deepseekModel })
-        the_model = createDeepSeek({apiKey})
+        the_model = createDeepSeek({
+          apiKey: apiConfig.key,
+          baseURL: apiConfig.domain,
+        })
       } else {
         // For OpenAI models (default)
         logger.api("初始化OpenAI模型", { model: modelType })
-        the_model = createOpenAI({apiKey})
+        the_model = createOpenAI({
+          apiKey: apiConfig.key,
+          baseURL: apiConfig.domain,
+        })
       }
     } catch (error) {
       logger.error("初始化模型错误:", error)
@@ -80,13 +141,39 @@ export async function POST(req: Request) {
         messages,
       })
 
+      // 创建一个转换流来验证命令
+      const transformStream = new TransformStream({
+        async transform(chunk, controller) {
+          const text = new TextDecoder().decode(chunk)
+          
+          // 提取并验证GeoGebra命令
+          const commands = GeoGebraValidator.extractCommands(text)
+          if (commands.length > 0) {
+            const validation = GeoGebraValidator.validateCommands(commands)
+            if (!validation.isValid) {
+              // 如果发现无效命令，添加警告信息
+              const warning = `\n\n⚠️ 警告：发现以下无效的GeoGebra命令：\n${validation.errors.join('\n')}\n请检查命令是否正确。`
+              controller.enqueue(new TextEncoder().encode(warning))
+            }
+          }
+          
+          controller.enqueue(chunk)
+        }
+      })
+
       logger.api("返回流式响应")
-      // Return the stream response
-      return result.toDataStreamResponse({
+      // 返回流式响应
+      const response = result.toDataStreamResponse({
         headers: {
           "Transfer-Encoding": "chunked",
           Connection: "keep-alive"
         }
+      })
+
+      // 使用转换流处理响应体
+      const transformedBody = response.body?.pipeThrough(transformStream)
+      return new Response(transformedBody, {
+        headers: response.headers
       })
     } catch (error) {
       logger.error("创建流式响应错误:", error)
@@ -96,8 +183,8 @@ export async function POST(req: Request) {
       })
     }
   } catch (error) {
-    logger.error("聊天API错误:", error)
-    return new Response(JSON.stringify({ error: "处理聊天请求失败", details: (error as Error).message }), {
+    logger.error("处理请求错误:", error)
+    return new Response(JSON.stringify({ error: "处理请求时发生错误" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     })

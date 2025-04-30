@@ -208,6 +208,25 @@ export default function ChatPage() {
     setTemporaryError(`已执行${commands.length}条GeoGebra命令`)
   }, [messages, extractLatestCommands, executeCommands, setTemporaryError])
 
+  const handleRetry = useCallback((messageId?: string) => {
+    if (messages.length > 0) {
+      // 如果提供了messageId，找到对应的用户消息
+      // 否则获取最后一条用户消息
+      const targetMessage = messageId
+        ? messages.find(msg => msg.id === messageId)
+        : [...messages].reverse().find(msg => msg.role === "user")
+      
+      if (targetMessage) {
+        // 清除错误状态
+        clearError()
+        // 设置输入框内容为要重试的消息
+        handleInputChange({ target: { value: targetMessage.content } } as any)
+        // 重新发送消息
+        handleSubmit(new Event("submit") as any)
+      }
+    }
+  }, [messages, handleSubmit, clearError, handleInputChange])
+
   return (
     <>
       <Head>
@@ -298,6 +317,7 @@ export default function ChatPage() {
                     isLoading={isLoading}
                     error={error}
                     onExecuteCommands={executeCommands}
+                    onRetry={handleRetry}
                   />
                 </TabsContent>
 
@@ -311,77 +331,24 @@ export default function ChatPage() {
                       <div className="space-y-2">
                         <label className="text-sm font-medium">模型类型</label>
                         <select
-                          className="w-full p-2 bg-background border rounded-md"
                           value={config.modelType}
                           onChange={(e) =>
-                            useAppStore
-                              .getState()
-                              .updateConfig({ modelType: e.target.value })
+                            useAppStore.getState().updateConfig({
+                              modelType: e.target.value,
+                            })
                           }
+                          className="w-full p-2 bg-background border rounded-md"
                         >
                           <option value="gpt-4o">GPT-4o</option>
                           <option value="gpt-4">GPT-4</option>
                           <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
                           <option value="claude-3-opus">Claude 3 Opus</option>
-                          <option value="claude-3-sonnet">
-                            Claude 3 Sonnet
-                          </option>
+                          <option value="claude-3-sonnet">Claude 3 Sonnet</option>
                           <option value="claude-3-haiku">Claude 3 Haiku</option>
                           <option value="deepseek-chat">DeepSeek Chat</option>
                           <option value="deepseek-coder">DeepSeek Coder</option>
                           <option value="llama-3">Llama 3</option>
                         </select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">
-                          OpenAI API 密钥
-                        </label>
-                        <input
-                          type="password"
-                          value={config.apiKeys.openai || ""}
-                          onChange={(e) =>
-                            useAppStore
-                              .getState()
-                              .updateApiKey("openai", e.target.value)
-                          }
-                          placeholder="输入 OpenAI API 密钥"
-                          className="w-full p-2 bg-background border rounded-md"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">
-                          Anthropic API 密钥
-                        </label>
-                        <input
-                          type="password"
-                          value={config.apiKeys.anthropic || ""}
-                          onChange={(e) =>
-                            useAppStore
-                              .getState()
-                              .updateApiKey("anthropic", e.target.value)
-                          }
-                          placeholder="输入 Anthropic API 密钥"
-                          className="w-full p-2 bg-background border rounded-md"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">
-                          DeepSeek API 密钥
-                        </label>
-                        <input
-                          type="password"
-                          value={config.apiKeys.deepseek || ""}
-                          onChange={(e) =>
-                            useAppStore
-                              .getState()
-                              .updateApiKey("deepseek", e.target.value)
-                          }
-                          placeholder="输入 DeepSeek API 密钥"
-                          className="w-full p-2 bg-background border rounded-md"
-                        />
                       </div>
 
                       <div className="space-y-2">

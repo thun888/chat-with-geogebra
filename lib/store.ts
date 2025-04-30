@@ -2,16 +2,24 @@ import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
 
 // 类型定义
-export type ApiKeys = {
-  openai?: string
-  anthropic?: string
-  deepseek?: string
+export type ApiConfig = {
+  domain: string
+  path: string
+  key: string
+}
+
+export type ModelConfig = {
+  name: string
+  provider: string
+  modelType: string
+  customModelType?: string
+  apiConfig: ApiConfig
 }
 
 export type ConfigSettings = {
   modelType: string
-  apiKeys: ApiKeys
   systemPrompt: string
+  customModels: ModelConfig[]
 }
 
 export type Conversation = {
@@ -29,11 +37,6 @@ export type Message = {
 // 默认配置
 const DEFAULT_CONFIG: ConfigSettings = {
   modelType: "gpt-4o",
-  apiKeys: {
-    openai: "",
-    anthropic: "",
-    deepseek: "",
-  },
   systemPrompt: `你是一个几何学助手，可以通过GeoGebra绘制几何图形和动画。
 
 当用户请求绘制图形或动画时，请提供：
@@ -98,6 +101,7 @@ GeoGebra支持的命令类型包括：
 请确保命令语法正确，并在解释中提及每个命令的目的。
 如果用户的请求不明确，请提出澄清问题。
 用户的请求可能与之前提出的请求相关。`,
+  customModels: [],
 }
 
 // 默认对话
@@ -111,7 +115,6 @@ interface AppState {
   // 配置状态
   config: ConfigSettings
   updateConfig: (config: Partial<ConfigSettings>) => void
-  updateApiKey: (provider: keyof ApiKeys, key: string) => void
 
   // 对话状态
   conversations: Conversation[]
@@ -145,16 +148,6 @@ export const useAppStore = create<AppState>()(
       updateConfig: (newConfig: Partial<ConfigSettings>) =>
         set((state: AppState) => ({
           config: { ...state.config, ...newConfig },
-        })),
-      updateApiKey: (provider: keyof ApiKeys, key: string) =>
-        set((state: AppState) => ({
-          config: {
-            ...state.config,
-            apiKeys: {
-              ...state.config.apiKeys,
-              [provider]: key,
-            },
-          },
         })),
 
       // 对话状态

@@ -5,7 +5,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Send, AlertCircle, Play, ChevronDown, ChevronUp, Code } from "lucide-react"
+import { Send, AlertCircle, Play, ChevronDown, ChevronUp, Code, RefreshCw, Loader2 } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkMath from "remark-math"
 import rehypeKatex from "rehype-katex"
@@ -13,6 +13,7 @@ import remarkGfm from "remark-gfm"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { useGeoGebraCommands } from "@/hooks/use-geogebra-commands"
+import { Message } from "@/lib/store"
 
 interface ChatMessage {
   id: string
@@ -29,6 +30,7 @@ interface ChatInterfaceProps {
   onOpenConfig?: () => void
   error?: string | null
   onExecuteCommands?: (commands: string[]) => void
+  onRetry?: (messageId?: string) => void
 }
 
 export function ChatInterface({
@@ -40,6 +42,7 @@ export function ChatInterface({
   onOpenConfig,
   error,
   onExecuteCommands,
+  onRetry,
 }: ChatInterfaceProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [expandedMessages, setExpandedMessages] = useState<Record<string, boolean>>({})
@@ -114,16 +117,48 @@ export function ChatInterface({
                 return (
                   <div key={messageId} className="mb-3">
                     <div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                      {message.role === "assistant" && hasCommands && (
+                      {message.role === "assistant" && (
+                        <div className="flex flex-col items-start gap-1 mr-1">
+                          {hasCommands && (
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 mr-1 flex-shrink-0 self-start mt-1"
+                              className="h-8 w-8 flex-shrink-0"
                           onClick={() => executeMessageCommands(messageId)}
                           title="执行此消息中的所有GeoGebra命令"
                         >
                           <Play className="h-4 w-4" />
                         </Button>
+                          )}
+                          {!isLoading && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 flex-shrink-0"
+                              onClick={() => {
+                                // 找到当前消息之前的最后一条用户消息
+                                const currentIndex = messages.findIndex((msg: Message) => msg.id === messageId)
+                                if (currentIndex > 0) {
+                                  const previousUserMessage = [...messages]
+                                    .slice(0, currentIndex)
+                                    .reverse()
+                                    .find((msg: Message) => msg.role === "user")
+                                  if (previousUserMessage) {
+                                    // 获取从开始到当前消息之前的所有消息作为上下文
+                                    const contextMessages = messages.slice(0, currentIndex)
+                                    // 设置输入框内容为要重试的消息
+                                    handleInputChange({ target: { value: previousUserMessage.content } } as any)
+                                    // 重新发送消息，保留上下文
+                                    handleSubmit(new Event("submit") as any)
+                                  }
+                                }
+                              }}
+                              title="重试此消息"
+                            >
+                              <RefreshCw className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
                       )}
                       <div
                         className={`max-w-[90%] rounded-lg px-3 py-1.5 ${
@@ -215,6 +250,16 @@ export function ChatInterface({
                   </div>
                 )
               })}
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-muted rounded-lg px-3 py-1.5">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-muted-foreground">正在思考...</span>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
           )}
