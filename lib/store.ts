@@ -36,7 +36,7 @@ export type Message = {
 
 // 默认配置
 const DEFAULT_CONFIG: ConfigSettings = {
-  modelType: "gpt-4o",
+  modelType: "deepseek-free",
   systemPrompt: `你是一个几何学助手，可以通过GeoGebra绘制几何图形和动画。
 
 当用户请求绘制图形或动画时，请提供：
@@ -101,7 +101,18 @@ GeoGebra支持的命令类型包括：
 请确保命令语法正确，并在解释中提及每个命令的目的。
 如果用户的请求不明确，请提出澄清问题。
 用户的请求可能与之前提出的请求相关。`,
-  customModels: [],
+  customModels: [
+    {
+      name: "deepseek-free",
+      provider: "openai",
+      modelType: "deepseek-r1:free",
+      apiConfig: {
+        domain: "https://openrouter.ai",
+        path: "/api/v1/chat/completions",
+        key: "OPENROUTER_API_KEY_PLACEHOLDER"
+      }
+    }
+  ],
 }
 
 // 默认对话

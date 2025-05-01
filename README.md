@@ -55,7 +55,24 @@ npm install
 npm run dev
 ```
 
- ⚡ 注意：需要自行准备 Claude、ChatGPT、DeepSeek 等服务的 API Key。
+⚡ 注意：需要自行准备 Claude、ChatGPT、DeepSeek 等服务的 API Key。
+
+## 🌩️ Vercel 部署指南
+
+本项目可以轻松部署到 Vercel 平台：
+
+1. Fork 本仓库到你的 GitHub 账户
+2. 在 Vercel 中导入该项目
+3. 配置以下环境变量：
+   - `OPENROUTER_API_KEY`: OpenRouter 的 API 密钥（用于默认的 DeepSeek-Free 模型）
+   - `OPENAI_API_KEY`：如果使用 OpenAI 模型，需要设置此变量
+   - `ANTHROPIC_API_KEY`：如果使用 Anthropic (Claude) 模型，需要设置此变量
+   - `DEEPSEEK_API_KEY`：如果使用 DeepSeek 模型，需要设置此变量
+4. 点击部署，等待部署完成即可
+
+默认情况下，项目已经配置了一个免费的 DeepSeek 模型（通过 OpenRouter 提供），只需在 Vercel 环境变量中设置 `OPENROUTER_API_KEY` 即可使用。
+
+可以在 [OpenRouter](https://openrouter.ai/) 申请免费的 API Key。
 
 ## 🧩 技术栈
 - Next.js

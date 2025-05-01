@@ -77,6 +77,8 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
       key: ""
     }
   })
+  // 添加一个状态来跟踪是否处于编辑模式以及编辑的模型索引
+  const [editingModelIndex, setEditingModelIndex] = useState<number | null>(null)
 
   // 提供商预设配置
   const providerPresets = {
@@ -133,6 +135,50 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
 
     // 检查API密钥是否存在
     if (customModel && !customModel.apiConfig.key) {
+      // 如果是默认的DeepSeek-Free模型，允许使用占位符
+      if (customModel.name === "deepseek-free" && 
+          customModel.modelType === "deepseek-r1:free" && 
+          customModel.provider === "openai" &&
+          customModel.apiConfig.domain === "https://openrouter.ai") {
+        // 确保使用占位符
+        const updatedCustomModels = localConfig.customModels.map(model => {
+          if (model.name === "deepseek-free") {
+            return {
+              ...model,
+              apiConfig: {
+                ...model.apiConfig,
+                key: "OPENROUTER_API_KEY_PLACEHOLDER"
+              }
+            };
+          }
+          return model;
+        });
+        
+        // 更新本地配置
+        const updatedConfig = {
+          ...localConfig,
+          customModels: updatedCustomModels
+        };
+        
+        // 更新store中的配置
+        updateConfig(updatedConfig);
+        
+        // 显示保存成功提示
+        setSaveSuccess(true);
+        
+        // 调用可选的onSave回调
+        if (onSave) onSave();
+        
+        // 2秒后关闭对话框
+        setTimeout(() => {
+          setSaveSuccess(false);
+          onOpenChange(false);
+        }, 2000);
+        
+        setError(null);
+        return;
+      }
+      
       console.debug("API密钥验证失败:", { model: customModel.name, hasKey: false })
       setError(`${customModel.provider} API Key 是必填项`)
       setActiveTab("model")
@@ -195,7 +241,27 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setShowModelForm(!showModelForm)}
+                  onClick={() => {
+                    if (showModelForm && editingModelIndex !== null) {
+                      // 如果正在编辑模型且点击取消，重置编辑状态
+                      setEditingModelIndex(null);
+                    }
+                    setShowModelForm(!showModelForm);
+                    
+                    // 如果正在关闭表单，重置newModel
+                    if (showModelForm) {
+                      setNewModel({
+                        name: "",
+                        provider: "openai",
+                        modelType: "",
+                        apiConfig: {
+                          domain: "https://api.openai.com",
+                          path: "/v1/chat/completions",
+                          key: "",
+                        },
+                      });
+                    }
+                  }}
                 >
                   {showModelForm ? "取消" : "添加模型"}
                 </Button>
@@ -337,10 +403,23 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
                   <div className="flex justify-end">
                     <Button
                       onClick={() => {
-                        setLocalConfig({
-                          ...localConfig,
-                          customModels: [...localConfig.customModels, newModel],
-                        })
+                        // 如果是编辑模式，先删除原来的模型
+                        if (editingModelIndex !== null) {
+                          const updatedModels = [...localConfig.customModels];
+                          updatedModels.splice(editingModelIndex, 1, newModel);
+                          setLocalConfig({
+                            ...localConfig,
+                            customModels: updatedModels,
+                          });
+                          setEditingModelIndex(null); // 重置编辑模式
+                        } else {
+                          // 添加新模型
+                          setLocalConfig({
+                            ...localConfig,
+                            customModels: [...localConfig.customModels, newModel],
+                          });
+                        }
+                        // 重置表单状态
                         setNewModel({
                           name: "",
                           provider: "openai",
@@ -350,11 +429,11 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
                             path: "/v1/chat/completions",
                             key: "",
                           },
-                        })
-                        setShowModelForm(false)
+                        });
+                        setShowModelForm(false);
                       }}
                     >
-                      添加
+                      {editingModelIndex !== null ? "更新" : "添加"}
                     </Button>
                   </div>
                 </div>
@@ -400,14 +479,12 @@ export function ConfigDialog({ open, onOpenChange, onSave }: ConfigDialogProps) 
                             variant="outline"
                             size="sm"
                             onClick={() => {
+                              // 设置编辑模式和索引
+                              setEditingModelIndex(index);
+                              // 加载模型到表单
                               setNewModel({ ...model });
+                              // 显示表单
                               setShowModelForm(true);
-                              setLocalConfig({
-                                ...localConfig,
-                                customModels: localConfig.customModels.filter(
-                                  (_, i) => i !== index
-                                ),
-                              });
                             }}
                           >
                             编辑

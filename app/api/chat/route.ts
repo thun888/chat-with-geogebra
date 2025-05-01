@@ -37,6 +37,24 @@ export async function POST(req: Request) {
         path: customModel.apiConfig?.path || "/v1/chat/completions",
         key: customModel.apiConfig.key || ""
       }
+      
+      // 检查API密钥是否是占位符，如果是，则使用环境变量中的密钥
+      if (apiConfig.key === "OPENROUTER_API_KEY_PLACEHOLDER") {
+        apiConfig.key = process.env.OPENROUTER_API_KEY || "";
+        logger.api("使用环境变量中的OpenRouter API密钥");
+        
+        // 检查环境变量是否已设置
+        if (!process.env.OPENROUTER_API_KEY) {
+          logger.error("错误 - 未设置OPENROUTER_API_KEY环境变量");
+          return new Response(JSON.stringify({ 
+            error: "未设置OPENROUTER_API_KEY环境变量。请在Vercel项目设置中添加此环境变量，或在设置页面配置自定义API密钥。" 
+          }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+      
       logger.api("使用自定义模型配置", {
         model: customModel.name,
         provider: customModel.provider,
@@ -71,7 +89,11 @@ export async function POST(req: Request) {
 
     if (!apiConfig.key) {
       logger.error("错误 - 缺少API密钥")
-      return new Response(JSON.stringify({ error: "需要 API 密钥，请在设置中配置对应模型的 API 密钥" }), {
+      return new Response(JSON.stringify({ 
+        error: modelType === "deepseek-free" 
+          ? "缺少OpenRouter API密钥。请在Vercel项目设置中添加OPENROUTER_API_KEY环境变量，或在设置页面配置自定义API密钥。"
+          : "需要API密钥，请在设置中配置对应模型的API密钥" 
+      }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       })
